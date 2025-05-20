@@ -66,3 +66,6 @@ export async function sendSms(to: string, message: string): Promise<SendSmsRespo
     };
   }
 }
+
+// Alias for send_sms to match the requested function name
+export const send_sms = sendSms;

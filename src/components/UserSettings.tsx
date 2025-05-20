@@ -12,7 +12,9 @@ import {
 } from '@/components/ui/select';
 import { useReminders } from '@/contexts/ReminderContext';
 import PhoneVerification from './PhoneVerification';
-import { Bell } from 'lucide-react';
+import { Bell, Send } from 'lucide-react';
+import { send_sms } from '@/utils/smsService';
+import { toast } from '@/components/ui/sonner';
 
 // Common timezones list for browsers that don't support Intl.supportedValuesOf
 const commonTimezones = [
@@ -36,6 +38,7 @@ const commonTimezones = [
 
 const UserSettings: React.FC = () => {
   const { userSettings, toggleNotifications, updateTimezone } = useReminders();
+  const [isSendingTest, setIsSendingTest] = useState(false);
   const [timezones, setTimezones] = useState<string[]>(() => {
     // Get all supported timezones
     try {
@@ -51,6 +54,31 @@ const UserSettings: React.FC = () => {
       return commonTimezones;
     }
   });
+  
+  const handleTestSms = async () => {
+    if (isSendingTest) return;
+    
+    setIsSendingTest(true);
+    try {
+      const result = await send_sms("+15005550006", "This is a test from Lovable + Supabase");
+      
+      if (result.success) {
+        toast.success("Test SMS sent successfully", {
+          description: result.message
+        });
+      } else {
+        toast.error("Failed to send test SMS", {
+          description: result.error
+        });
+      }
+    } catch (error) {
+      toast.error("Test SMS error", {
+        description: error instanceof Error ? error.message : "An unknown error occurred"
+      });
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
   
   return (
     <div className="space-y-8">
@@ -103,6 +131,19 @@ const UserSettings: React.FC = () => {
             <p className="text-xs text-muted-foreground">
               All reminder times will be based on this timezone
             </p>
+          </div>
+          
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleTestSms}
+              disabled={isSendingTest}
+              className="text-xs"
+            >
+              {isSendingTest ? "Sending..." : "Test SMS"}
+              <Send size={14} className="ml-1" />
+            </Button>
           </div>
         </div>
       </div>
