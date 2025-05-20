@@ -58,9 +58,21 @@ const UserSettings: React.FC = () => {
   const handleTestSms = async () => {
     if (isSendingTest) return;
     
+    // Check if phone is verified
+    if (!userSettings.phoneVerification?.isVerified) {
+      toast.error("Phone not verified", {
+        description: "Please verify your phone number before testing SMS"
+      });
+      return;
+    }
+    
     setIsSendingTest(true);
     try {
-      const result = await send_sms("+15005550006", "This is a test from Lovable + Supabase");
+      // Use the user's actual verified phone number
+      const result = await send_sms(
+        userSettings.phoneVerification.phoneNumber, 
+        "This is a test from Lovable + Supabase"
+      );
       
       if (result.success) {
         toast.success("Test SMS sent successfully", {
@@ -138,7 +150,7 @@ const UserSettings: React.FC = () => {
               variant="outline"
               size="sm"
               onClick={handleTestSms}
-              disabled={isSendingTest}
+              disabled={isSendingTest || !userSettings.phoneVerification?.isVerified}
               className="text-xs"
             >
               {isSendingTest ? "Sending..." : "Test SMS"}
