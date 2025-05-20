@@ -14,26 +14,41 @@ import { useReminders } from '@/contexts/ReminderContext';
 import PhoneVerification from './PhoneVerification';
 import { Bell } from 'lucide-react';
 
+// Common timezones list for browsers that don't support Intl.supportedValuesOf
+const commonTimezones = [
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Europe/Moscow',
+  'Asia/Tokyo',
+  'Asia/Shanghai',
+  'Asia/Kolkata',
+  'Asia/Dubai',
+  'Australia/Sydney',
+  'Pacific/Auckland',
+];
+
 const UserSettings: React.FC = () => {
   const { userSettings, toggleNotifications, updateTimezone } = useReminders();
   const [timezones, setTimezones] = useState<string[]>(() => {
-    // Get all supported timezones from Intl API
+    // Get all supported timezones
     try {
-      return Intl.supportedValuesOf('timeZone');
+      // Try to use Intl API if available
+      // @ts-ignore - Ignore TypeScript error for browsers that support this but TS doesn't recognize it
+      if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
+        // @ts-ignore
+        return Intl.supportedValuesOf('timeZone');
+      }
+      return commonTimezones;
     } catch (e) {
       // Fallback for browsers that don't support Intl.supportedValuesOf
-      return [
-        'America/New_York',
-        'America/Chicago',
-        'America/Denver',
-        'America/Los_Angeles',
-        'America/Anchorage',
-        'Pacific/Honolulu',
-        'Europe/London',
-        'Europe/Paris',
-        'Asia/Tokyo',
-        'Australia/Sydney',
-      ];
+      return commonTimezones;
     }
   });
   
@@ -95,12 +110,8 @@ const UserSettings: React.FC = () => {
       <div className="border-t pt-6">
         <h3 className="text-lg font-medium">About this App</h3>
         <p className="text-sm text-muted-foreground mt-2">
-          This is a simple reminder app that sends fun, sarcastic text messages at 
-          scheduled times. For demo purposes, the SMS sending is simulated.
-        </p>
-        <p className="text-sm text-muted-foreground mt-2">
-          To implement actual SMS sending, you would need to integrate with a service like
-          Twilio, Nexmo, or AWS SNS.
+          This is a reminder app that sends fun, sarcastic text messages at 
+          scheduled times using a Supabase edge function with Twilio.
         </p>
       </div>
     </div>

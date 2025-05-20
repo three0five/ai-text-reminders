@@ -1,8 +1,8 @@
-
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { Reminder, UserSettings, PhoneVerification, FrequencyType } from '../types/reminder';
 import { toast } from '@/components/ui/sonner';
 import { v4 as uuidv4 } from 'uuid';
+import { sendSms } from '@/utils/smsService';
 
 interface ReminderContextType {
   reminders: Reminder[];
@@ -114,16 +114,22 @@ export const ReminderProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [userSettings]);
 
   // Mock function to simulate sending an SMS
-  const sendSMS = (phoneNumber: string, message: string) => {
+  const sendSMS = async (phoneNumber: string, message: string): Promise<boolean> => {
     console.log(`Sending SMS to ${phoneNumber}: ${message}`);
-    // In a real app, this would call an API to send an SMS
     
-    // For demo purposes, we'll just toast the message
-    toast.info("SMS Sent", {
-      description: `To: ${phoneNumber}\nMessage: ${message}`,
-    });
+    const result = await sendSms(phoneNumber, message);
     
-    return true;
+    if (result.success) {
+      toast.success("SMS Sent", {
+        description: `To: ${phoneNumber}\nMessage: ${message}`,
+      });
+      return true;
+    } else {
+      toast.error("SMS Failed", {
+        description: result.error || "Failed to send SMS",
+      });
+      return false;
+    }
   };
 
   // Function to check if any reminders should be sent
