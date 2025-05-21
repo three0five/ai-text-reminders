@@ -2,7 +2,7 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 import { Reminder, UserSettings, PhoneVerification, FrequencyType } from '../types/reminder';
 import { toast } from '@/components/ui/sonner';
 import { v4 as uuidv4 } from 'uuid';
-import { sendSms } from '@/utils/smsService';
+import { supabase } from '../supabaseClient';
 
 interface ReminderContextType {
   reminders: Reminder[];
@@ -104,145 +104,17 @@ export const ReminderProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   // Save reminders to localStorage whenever they change
-  useEffect(() => {
+  React.useEffect(() => {
     localStorage.setItem('reminders', JSON.stringify(reminders));
   }, [reminders]);
 
   // Save user settings to localStorage whenever they change
-  useEffect(() => {
+  React.useEffect(() => {
     localStorage.setItem('userSettings', JSON.stringify(userSettings));
   }, [userSettings]);
 
-  // Mock function to simulate sending an SMS
-  const sendSMS = async (phoneNumber: string, message: string): Promise<boolean> => {
-    console.log(`Sending SMS to ${phoneNumber}: ${message}`);
-    
-    const result = await sendSms(phoneNumber, message);
-    
-    if (result.success) {
-      toast.success("SMS Sent", {
-        description: `To: ${phoneNumber}\nMessage: ${message}`,
-      });
-      return true;
-    } else {
-      toast.error("SMS Failed", {
-        description: result.error || "Failed to send SMS",
-      });
-      return false;
-    }
-  };
-
-  // Function to check if any reminders should be sent
-  useEffect(() => {
-    const checkReminders = () => {
-      // Get current time
-      const now = new Date();
-      
-      // Only proceed if notifications are enabled and phone is verified
-      if (!userSettings.notificationsEnabled || !userSettings.phoneVerification?.isVerified) {
-        return;
-      }
-
-      // Check each reminder
-      reminders.forEach(reminder => {
-        if (!reminder.sent && new Date(reminder.scheduledTime) <= now) {
-          // Create transformed message if not already done
-          const messageToSend = reminder.transformedMessage || transformMessage(reminder.message);
-          
-          // Send the message
-          if (sendSMS(userSettings.phoneVerification!.phoneNumber, messageToSend)) {
-            // Update the reminder to mark it as sent
-            const updatedReminder: Reminder = {
-              ...reminder,
-              sent: true,
-              sentAt: new Date(),
-              transformedMessage: messageToSend
-            };
-
-            // Handle recurring reminders
-            if (reminder.recurring && reminder.recurringConfig) {
-              // Create the next occurrence
-              createNextOccurrence(reminder);
-            }
-
-            // Update the reminder in the list
-            setReminders(prev => prev.map(r => r.id === reminder.id ? updatedReminder : r));
-          }
-        }
-      });
-    };
-
-    // Check reminders immediately and then every minute
-    checkReminders();
-    const interval = setInterval(checkReminders, 60000);
-    
-    return () => clearInterval(interval);
-  }, [reminders, userSettings]);
-
-  // Function to create the next occurrence of a recurring reminder
-  const createNextOccurrence = (reminder: Reminder) => {
-    if (!reminder.recurring || !reminder.recurringConfig) return;
-    
-    const config = reminder.recurringConfig;
-    const scheduled = new Date(reminder.scheduledTime);
-    let nextDate = new Date(scheduled);
-    
-    switch (config.frequency) {
-      case 'daily':
-        nextDate.setDate(nextDate.getDate() + 1);
-        break;
-      case 'weekly':
-        nextDate.setDate(nextDate.getDate() + 7);
-        break;
-      case 'monthly':
-        nextDate.setMonth(nextDate.getMonth() + 1);
-        break;
-      case 'custom':
-        // For custom frequencies, this would be more complex
-        // Simplified version for now
-        if (config.times && config.times > 1) {
-          // For multiple times per day, we'd need to calculate the next time slot
-          // This is simplified
-          nextDate.setHours(nextDate.getHours() + (24 / config.times));
-        } else if (config.daysOfWeek && config.daysOfWeek.length > 0) {
-          // Find the next day of the week
-          let found = false;
-          let daysToAdd = 1;
-          
-          while (!found && daysToAdd < 8) {
-            const nextDay = new Date(scheduled);
-            nextDay.setDate(nextDay.getDate() + daysToAdd);
-            
-            if (config.daysOfWeek.includes(nextDay.getDay())) {
-              nextDate = nextDay;
-              found = true;
-            }
-            
-            daysToAdd++;
-          }
-        }
-        break;
-    }
-    
-    // Check if we've passed the end date
-    if (config.endDate && nextDate > new Date(config.endDate)) {
-      // Don't create a new occurrence
-      return;
-    }
-    
-    // Create the new reminder
-    const newReminder: Reminder = {
-      id: uuidv4(),
-      message: reminder.message,
-      scheduledTime: nextDate,
-      recurring: true,
-      recurringConfig: reminder.recurringConfig,
-      sent: false
-    };
-    
-    // Add the new reminder
-    setReminders(prev => [...prev, newReminder]);
-  };
+  // NOTE: Browser-side timer/setInterval removed as requested
+  // Reminders are now processed server-side by the cron function
 
   // Add a new reminder
   const addReminder = (reminder: Omit<Reminder, 'id' | 'sent' | 'sentAt' | 'transformedMessage'>) => {
@@ -289,7 +161,7 @@ export const ReminderProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
     
     // In a real app, this would send the actual SMS
-    sendSMS(phoneNumber, `Your verification code is: ${phoneVerification.verificationCode}`);
+    // sendSMS(phoneNumber, `Your verification code is: ${phoneVerification.verificationCode}`);
     
     toast.info("Verification Code Sent", {
       description: `Check your phone for a 6-digit code. For this demo, the code is: ${phoneVerification.verificationCode}`,
@@ -318,16 +190,16 @@ export const ReminderProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
     
     // In a real app, this would send the actual SMS
-    if (userSettings.phoneVerification) {
-      sendSMS(
-        userSettings.phoneVerification.phoneNumber,
-        `Your verification code is: ${verificationCode}`
-      );
+    // if (userSettings.phoneVerification) {
+    //   sendSMS(
+    //     userSettings.phoneVerification.phoneNumber,
+    //     `Your verification code is: ${verificationCode}`
+    //   );
       
       toast.info("Verification Code Sent", {
         description: `Check your phone for a 6-digit code. For this demo, the code is: ${verificationCode}`,
       });
-    }
+    // }
   };
 
   // Verify phone

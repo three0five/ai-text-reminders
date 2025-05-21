@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,6 +22,13 @@ import { useReminders } from '@/contexts/ReminderContext';
 import { FrequencyType, Reminder, RecurringConfig } from '@/types/reminder';
 import { toast } from '@/components/ui/sonner';
 import { Check, Clock } from 'lucide-react';
+import { supabase } from '@/supabaseClient';
+import { createReminder } from '@/services/reminderService';
+
+interface VerifiedPhone {
+  id: string;
+  e164_number: string;
+}
 
 interface ReminderFormProps {
   onComplete?: () => void;
@@ -72,8 +78,56 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
     }
   };
   
+  // New state for verified phones
+  const [verifiedPhones, setVerifiedPhones] = useState<VerifiedPhone[]>([]);
+  const [selectedPhoneId, setSelectedPhoneId] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Load verified phones on mount
+  useEffect(() => {
+    const loadVerifiedPhones = async () => {
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('phone_numbers')
+          .select('id, e164_number')
+          .eq('verified', true);
+        
+        if (error) throw error;
+        setVerifiedPhones(data || []);
+        
+        if (data && data.length > 0) {
+          setSelectedPhoneId(data[0].id);
+        }
+      } catch (error) {
+        console.error('Error loading verified phones:', error);
+        toast.error('Failed to load verified phone numbers');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadVerifiedPhones();
+  }, []);
+
+  const formatPhoneNumber = (e164Number: string) => {
+    // Basic formatter for E.164 format
+    if (e164Number.length < 8) return e164Number;
+    
+    // For US/CA numbers
+    if (e164Number.startsWith('+1') && e164Number.length === 12) {
+      return `+1 (${e164Number.substring(2, 5)}) ${e164Number.substring(5, 8)}-${e164Number.substring(8)}`;
+    }
+    
+    // Generic formatting for other countries
+    const countryCode = e164Number.substring(0, e164Number.length - 10);
+    const number = e164Number.substring(e164Number.length - 10);
+    return `${countryCode} ${number.substring(0, 3)}-${number.substring(3, 6)}-${number.substring(6)}`;
+  };
+  
   // Handle form submission
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!message.trim()) {
@@ -83,6 +137,11 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
     
     if (!date) {
       toast.error("Please select a date");
+      return;
+    }
+
+    if (!selectedPhoneId) {
+      toast.error("Please select a phone number");
       return;
     }
     
@@ -110,37 +169,29 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
       return;
     }
     
-    // Create recurring config if needed
-    let recurringConfig: RecurringConfig | undefined = undefined;
-    if (recurring) {
-      recurringConfig = {
-        frequency,
-        times: frequency === 'custom' ? times : undefined,
-        daysOfWeek: frequency === 'weekly' ? daysOfWeek : undefined,
-        endDate: endDate
-      };
-    }
+    setIsSubmitting(true);
     
-    // Create the reminder object
-    const reminderData: Omit<Reminder, 'id' | 'sent' | 'sentAt' | 'transformedMessage'> = {
-      message,
-      scheduledTime,
-      recurring,
-      recurringConfig
-    };
-    
-    if (isEditing && existingReminder) {
-      editReminder({
-        ...existingReminder,
-        ...reminderData
-      });
-    } else {
-      addReminder(reminderData);
-    }
-    
-    // Call the onComplete callback if provided
-    if (onComplete) {
-      onComplete();
+    try {
+      // Create the reminder using the new service
+      const { error } = await createReminder(
+        selectedPhoneId,
+        message,
+        scheduledTime.toISOString()
+      );
+      
+      if (error) throw error;
+      
+      toast.success("Reminder scheduled successfully");
+      
+      // Call the onComplete callback if provided
+      if (onComplete) {
+        onComplete();
+      }
+    } catch (error) {
+      console.error('Error creating reminder:', error);
+      toast.error("Failed to schedule reminder");
+    } finally {
+      setIsSubmitting(false);
     }
   };
   
@@ -156,6 +207,35 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
           className="min-h-[100px]"
           required
         />
+      </div>
+      
+      <div className="space-y-2">
+        <Label htmlFor="phone">Send to</Label>
+        <Select
+          value={selectedPhoneId}
+          onValueChange={setSelectedPhoneId}
+          disabled={isLoading || verifiedPhones.length === 0}
+        >
+          <SelectTrigger id="phone" className="w-full">
+            <SelectValue placeholder={
+              isLoading ? "Loading phone numbers..." : 
+              verifiedPhones.length === 0 ? "No verified phones" : 
+              "Select a phone number"
+            } />
+          </SelectTrigger>
+          <SelectContent>
+            {verifiedPhones.map(phone => (
+              <SelectItem key={phone.id} value={phone.id}>
+                {formatPhoneNumber(phone.e164_number)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {verifiedPhones.length === 0 && (
+          <p className="text-xs text-amber-600">
+            Please verify at least one phone number in the Settings tab
+          </p>
+        )}
       </div>
       
       <div className="flex flex-col md:flex-row gap-4">
@@ -301,8 +381,12 @@ const ReminderForm: React.FC<ReminderFormProps> = ({
         </div>
       )}
       
-      <Button type="submit" className="w-full">
-        {isEditing ? 'Update Reminder' : 'Create Reminder'}
+      <Button 
+        type="submit" 
+        className="w-full"
+        disabled={isSubmitting || verifiedPhones.length === 0}
+      >
+        {isSubmitting ? 'Scheduling...' : 'Schedule Reminder'}
       </Button>
     </form>
   );
